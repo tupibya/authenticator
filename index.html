@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generate and display 6-digit TOTP code</title>
+
+  <style>
+    
+  </style>
+
+  
+</head>
+<body>
+  <!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>TOTP Authenticator</title>
+
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #fff;
+    --text: #222;
+    --sub: #666;
+    --accent: #4a90e2;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1f22;
+      --card: #2a2c31;
+      --text: #f0f0f0;
+      --sub: #aaa;
+      --accent: #6aa8ff;
+    }
+  }
+
+  body {
+    font-family: "Segoe UI", sans-serif;
+    background: var(--bg);
+    margin: 0;
+    padding: 40px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .container {
+    background: var(--card);
+    padding: 30px 40px;
+    border-radius: 20px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    max-width: 480px;
+    width: 100%;
+    text-align: center;
+  }
+
+  h1 {
+    margin-bottom: 20px;
+    font-size: 1.8em;
+    color: var(--text);
+  }
+
+  input[type="file"] {
+    margin-bottom: 20px;
+    width: 100%;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    font-size: 1em;
+    border: 2px solid #444;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    background: var(--card);
+    color: var(--text);
+  }
+
+  input[type="text"]:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  .circle-timer {
+    width: 120px;
+    height: 120px;
+    margin: 20px auto 10px auto;
+    position: relative;
+  }
+
+  .circle-timer svg {
+    transform: rotate(-90deg);
+  }
+
+  .circle-timer circle {
+    fill: none;
+    stroke-width: 10;
+    stroke-linecap: round;
+  }
+
+  .circle-bg {
+    stroke: var(--sub);
+    opacity: 0.3;
+  }
+
+  .circle-progress {
+    stroke: var(--accent);
+    transition: stroke-dashoffset 0.5s linear;
+  }
+
+  .code-box {
+    margin-top: 10px;
+    font-size: 3em;
+    font-weight: bold;
+    letter-spacing: 6px;
+    color: var(--text);
+  }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>Authenticator</h1>
+
+  <!-- QRコード画像アップロード -->
+  <input id="qrInput" type="file" accept="image/*">
+
+  <!-- シークレットキー入力 -->
+  <input id="secret" type="text" placeholder="シークレットキー（Base32）">
+
+  <!-- 円形ゲージ -->
+  <div class="circle-timer">
+    <svg width="120" height="120">
+      <circle class="circle-bg" cx="60" cy="60" r="50"></circle>
+      <circle class="circle-progress" cx="60" cy="60" r="50"></circle>
+    </svg>
+  </div>
+
+  <!-- TOTPコード表示 -->
+  <div id="code" class="code-box">------</div>
+</div>
+
+<script src="https://unpkg.com/jsqr/dist/jsQR.js"></script>
+
+<script>
+  function base32Decode(input) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let bits = "";
+    let bytes = [];
+
+    input = input.replace(/=+$/,"").toUpperCase();
+
+    for (let i = 0; i < input.length; i++) {
+      const val = alphabet.indexOf(input[i]);
+      if (val === -1) continue;
+      bits += val.toString(2).padStart(5, "0");
+    }
+
+    for (let i = 0; i + 8 <= bits.length; i += 8) {
+      bytes.push(parseInt(bits.substring(i, i + 8), 2));
+    }
+    return new Uint8Array(bytes);
+  }
+
+  async function generateTOTP(secretBase32) {
+    const keyBytes = base32Decode(secretBase32);
+    const counter = Math.floor(Date.now() / 1000 / 30);
+
+    const counterBytes = new ArrayBuffer(8);
+    const view = new DataView(counterBytes);
+    view.setUint32(4, counter);
+
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyBytes,
+      { name: "HMAC", hash: "SHA-1" },
+      false,
+      ["sign"]
+    );
+
+    const hmac = await crypto.subtle.sign("HMAC", cryptoKey, counterBytes);
+    const h = new Uint8Array(hmac);
+
+    const offset = h[h.length - 1] & 0x0f;
+    const binCode =
+      ((h[offset] & 0x7f) << 24) |
+      ((h[offset + 1] & 0xff) << 16) |
+      ((h[offset + 2] & 0xff) << 8) |
+      (h[offset + 3] & 0xff);
+
+    const otp = binCode % 1000000;
+    return otp.toString().padStart(6, "0");
+  }
+
+  async function update() {
+    const secret = document.getElementById("secret").value.trim();
+    if (!secret) {
+      document.getElementById("code").textContent = "------";
+      return;
+    }
+
+    const code = await generateTOTP(secret);
+    document.getElementById("code").textContent = code;
+
+    // 円形ゲージ更新
+    const remain = 30 - (Math.floor(Date.now() / 1000) % 30);
+    const progressCircle = document.querySelector(".circle-progress");
+    const radius = 50;
+    const circumference = 2 * Math.PI * radius;
+
+    progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
+
+    const percent = remain / 30;
+    const offset = circumference * (1 - percent);
+
+    progressCircle.style.strokeDashoffset = offset;
+  }
+
+  document.getElementById("secret").addEventListener("input", update);
+  setInterval(update, 1000);
+
+  // QRコード画像アップロード処理
+  document.getElementById("qrInput").addEventListener("change", function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = function() {
+      img.src = reader.result;
+
+      img.onload = function() {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, canvas.width, canvas.height);
+
+        if (code) {
+          const url = code.data;
+          if (url.startsWith("otpauth://")) {
+            const secret = url.match(/secret=([^&]+)/)[1];
+            document.getElementById("secret").value = secret;
+            update();
+          }
+        }
+      };
+    };
+
+    reader.readAsDataURL(file);
+  });
+</script>
+</body>
+</html>
+
+
+  <script>
+    
+  </script>
+</body>
+</html>
