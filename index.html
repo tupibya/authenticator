@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Generate and display 6-digit TOTP code</title>
+  <title>Authencator</title>
 
   <style>
     
@@ -258,6 +258,11 @@
 
     reader.readAsDataURL(file);
   });
+  if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(() => console.log('SW registered'))
+    .catch(err => console.error('SW registration failed:', err));
+}
 </script>
 </body>
 </html>
