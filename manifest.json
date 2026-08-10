@@ -1,5 +1,5 @@
 {
-  "name": "authenticator app",
+  "name": "TOTP authenticator app",
   "short_name": "authenticator",
   "start_url": "./",
   "scope": "./",
